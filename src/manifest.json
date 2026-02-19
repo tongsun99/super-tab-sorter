@@ -4,6 +4,11 @@
     "version": "0.5.3",
     "manifest_version": 3,
     "permissions": ["tabs", "tabGroups", "storage"],
+    "icons": {
+        "16": "img/16.png",
+        "48": "img/48.png",
+        "128": "img/128.png"
+    },
     "background": {
         "service_worker": "background.js",
         "type": "module"
@@ -12,9 +17,9 @@
         "default_title": "Super Tab Sorter",
         "default_popup": "./popup.html",
         "default_icons": {
-            "128": "img/128.png",
+            "16": "img/16.png",
             "48": "img/48.png",
-            "16": "img/16.png"
+            "128": "img/128.png"
         }
     },
     "options_page": "./options.html"
