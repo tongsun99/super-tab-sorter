@@ -16,8 +16,8 @@ chrome.storage.sync.get({
     newInstall: false,
     newUpdate: false,
 }, function (config) {
-    clearInstallOrUpdate();
     if (config.newInstall) {
+        clearInstallOrUpdate();
         alert(`Welcome to Super Tab Sorter!
 
         Please review the "User Guide" before getting started.
@@ -25,15 +25,18 @@ chrome.storage.sync.get({
         You'll need to click the extension icon, again, to sort your tabs after dismissing this dialog but you won't see this dialog again unless you reinstall this extension.
 
         You can right-click on the extension icon and select \"Options\" at any time to configure extension settings and review the user guide.`);
-        window.open(chrome.runtime.getURL('./userguide.html'));
+        chrome.tabs.create({ url: chrome.runtime.getURL('./userguide.html') });
+        window.close();
     } else if (config.newUpdate) {
+        clearInstallOrUpdate();
         alert("Super Tab Sorter has been updated to v" + thisVersion +
         ".\n\nThis version uses the new Chrome manifest v3 API (major architectural change) and adds direct support for Chrome's tab groups feature" +
         ".\n\nIt also adds optional duplicate tab removal (during sorting) and Sort By URL sorts by root domain and sub-sorts by host name." +
         "\n\nPlease review the updated User Guide to learn more about the latest changes." +
         "\n\nYou'll need to click the extension icon, again, to sort your tabs after dismissing this dialog but you won't see this dialog again until installing the next update." +
         "\n\nYou can right-click on the extension icon and select \"Options\" at any time to configure extension settings and review the user guide.");
-        window.open(chrome.runtime.getURL('./userguide.html'));
+        chrome.tabs.create({ url: chrome.runtime.getURL('./userguide.html') });
+        window.close();
     } else {
         // Send click event to background.js for processing...
         chrome.runtime.sendMessage({
