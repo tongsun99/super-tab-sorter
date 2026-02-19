@@ -10,8 +10,6 @@ var TAB_SUSPENDER_EXTENSION_ID = "";
 var SUSPENDED_PREFIX = 'chrome-extension://' + TAB_SUSPENDER_EXTENSION_ID + '/suspended.html#';
 var SUSPENDED_PREFIX_LEN = SUSPENDED_PREFIX.length;
 
-var tabSet = new Set([]);
-
 // Auto-sort feature state management
 var autoSortDebounceTimer = null;               // Debounce timer for tab events
 const AUTO_SORT_DEBOUNCE_DELAY = 1000;          // 1 second debounce delay
@@ -210,11 +208,6 @@ async function sortTabGroups() {
         }, function(tabs) {
             sortTabs(tabs, -1, settings)
         })
-
-        // Clear tabSet after every run to ensure that we don't remove presorted tabs as duplicate tabs on subsequent sorts...
-        if (settings.dedupeTabs) {
-            tabSet.clear()
-        }
     })
 }
 
@@ -237,7 +230,37 @@ async function sortTabs(tabs, groupId, settings) {
         // Convert array of tabs to array of tab IDs, deduping tabs (in current window) if enabled in settings...
         var tabIds = []
         if (settings.dedupeTabs) {
-            tabIds = Array.from(new Set(tabs.flatMap((tab) => tabSet.has(tabToUrl(tab).href) ?  ( chrome.tabs.remove(tab.id), [] ) : (tabSet.add(tabToUrl(tab).href), tab.id))))
+            // Build a map of URL -> array of tabs with that URL
+            var urlToTabs = new Map();
+            tabs.forEach(tab => {
+                var url = tabToUrl(tab).href;
+                if (!urlToTabs.has(url)) {
+                    urlToTabs.set(url, []);
+                }
+                urlToTabs.get(url).push(tab);
+            });
+
+            // For each URL, keep the tab with the largest ID (newest), remove others
+            var tabsToRemove = [];
+            urlToTabs.forEach(tabsWithSameUrl => {
+                if (tabsWithSameUrl.length > 1) {
+                    // Sort by ID ascending, so newest (largest ID) is last
+                    tabsWithSameUrl.sort((a, b) => a.id - b.id);
+                    // Remove all except the last one (newest)
+                    for (let i = 0; i < tabsWithSameUrl.length - 1; i++) {
+                        tabsToRemove.push(tabsWithSameUrl[i].id);
+                    }
+                }
+            });
+
+            // Remove old duplicate tabs
+            if (tabsToRemove.length > 0) {
+                chrome.tabs.remove(tabsToRemove);
+            }
+
+            // Build list of tab IDs to keep (excluding removed ones)
+            var removedSet = new Set(tabsToRemove);
+            tabIds = tabs.filter(tab => !removedSet.has(tab.id)).map(tab => tab.id);
         } else {
             tabIds = tabs.map(function(tab){ return tab.id; })
         }
