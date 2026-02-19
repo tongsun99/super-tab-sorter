@@ -3,7 +3,7 @@
     "description": "Super Tab Sorter that allows user-defined tab group order.",
     "version": "0.5.3",
     "manifest_version": 3,
-    "permissions": ["tabs", "tabGroups", "storage"],
+    "permissions": ["tabs", "tabGroups", "storage", "alarms"],
     "icons": {
         "16": "img/16.png",
         "48": "img/48.png",

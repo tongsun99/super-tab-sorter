@@ -12,6 +12,12 @@ var SUSPENDED_PREFIX_LEN = SUSPENDED_PREFIX.length;
 
 var tabSet = new Set([]);
 
+// Auto-sort feature state management
+var autoSortDebounceTimer = null;               // Debounce timer for tab events
+const AUTO_SORT_DEBOUNCE_DELAY = 1000;          // 1 second debounce delay
+const AUTO_SORT_ALARM_NAME = "autoSortTimer";   // Name for chrome.alarms
+var isInitializing = true;                      // Initialization flag
+
 // Extension icon onClick handler...
 chrome.runtime.onMessage.addListener(function(request, sender, sendResponse) {
     if (request.type == "click_event") {
@@ -19,6 +25,66 @@ chrome.runtime.onMessage.addListener(function(request, sender, sendResponse) {
         sendResponse({ message: 'success' });
     }
 })
+
+// Auto-sort on tab creation
+chrome.tabs.onCreated.addListener(function(tab) {
+    chrome.storage.sync.get({
+        autoSortEnabled: false,
+        autoSortOnTabCreate: true
+    }, function(settings) {
+        if (settings.autoSortEnabled && settings.autoSortOnTabCreate && !isInitializing) {
+            triggerAutoSortIfEnabled();
+        }
+    });
+});
+
+// Auto-sort on tab removal
+chrome.tabs.onRemoved.addListener(function(tabId, removeInfo) {
+    chrome.storage.sync.get({
+        autoSortEnabled: false,
+        autoSortOnTabClose: true
+    }, function(settings) {
+        if (settings.autoSortEnabled && settings.autoSortOnTabClose && !isInitializing) {
+            triggerAutoSortIfEnabled();
+        }
+    });
+});
+
+// Auto-sort on alarm (periodic sorting)
+chrome.alarms.onAlarm.addListener(function(alarm) {
+    if (alarm.name === AUTO_SORT_ALARM_NAME) {
+        chrome.storage.sync.get({
+            autoSortEnabled: false
+        }, function(settings) {
+            if (settings.autoSortEnabled) {
+                sortTabGroups();
+            }
+        });
+    }
+});
+
+// Listen for storage changes (settings updates from options page)
+// Restarts alarms if auto-sort settings change
+chrome.storage.onChanged.addListener(function(changes, areaName) {
+    if (areaName === 'sync') {
+        const autoSortSettingsChanged = changes.autoSortEnabled ||
+                                        changes.autoSortIntervalSeconds;
+        if (autoSortSettingsChanged) {
+            chrome.alarms.clear(AUTO_SORT_ALARM_NAME, function() {
+                chrome.storage.sync.get({
+                    autoSortEnabled: false,
+                    autoSortIntervalSeconds: 300
+                }, function(settings) {
+                    if (settings.autoSortEnabled && settings.autoSortIntervalSeconds > 0) {
+                        chrome.alarms.create(AUTO_SORT_ALARM_NAME, {
+                            periodInMinutes: Math.ceil(settings.autoSortIntervalSeconds / 60)
+                        });
+                    }
+                });
+            });
+        }
+    }
+});
 
 // Return whether tab is currently suspended
 function isSuspended(tab) {
@@ -49,6 +115,46 @@ chrome.runtime.onInstalled.addListener(function (details) {
         }, function () { });
     }
 })
+
+// Initialize auto-sort feature when service worker starts
+// Also handles service worker resumption after Chrome termination
+function initializeAutoSort() {
+    isInitializing = true;
+    chrome.storage.sync.get({
+        autoSortEnabled: false,
+        autoSortIntervalSeconds: 300
+    }, function(settings) {
+        if (settings.autoSortEnabled && settings.autoSortIntervalSeconds > 0) {
+            chrome.alarms.clear(AUTO_SORT_ALARM_NAME, function() {
+                chrome.alarms.create(AUTO_SORT_ALARM_NAME, {
+                    periodInMinutes: Math.ceil(settings.autoSortIntervalSeconds / 60)
+                });
+            });
+        }
+        isInitializing = false;
+    });
+}
+
+// Debounced auto-sort for tab events (creation/close)
+// Prevents excessive sorting when multiple tabs are opened/closed rapidly
+function triggerAutoSortIfEnabled() {
+    if (autoSortDebounceTimer !== null) {
+        clearTimeout(autoSortDebounceTimer);
+    }
+    autoSortDebounceTimer = setTimeout(function() {
+        chrome.storage.sync.get({
+            autoSortEnabled: false
+        }, function(settings) {
+            if (settings.autoSortEnabled) {
+                sortTabGroups();
+            }
+        });
+        autoSortDebounceTimer = null;
+    }, AUTO_SORT_DEBOUNCE_DELAY);
+}
+
+// Initialize auto-sort when service worker starts
+initializeAutoSort();
 
 // Separate windows must be sorted separately - this is to prevent undesired accidental sorting in other windows...
 async function sortTabGroups() {
