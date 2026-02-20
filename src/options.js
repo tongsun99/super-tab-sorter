@@ -17,8 +17,8 @@ function saveOptions() {
     var autoSortOnTabClose = document.getElementById('autoSortOnTabClose').checked;
 
     // Validate interval is in valid range
-    if (isNaN(autoSortIntervalSeconds) || autoSortIntervalSeconds < 30) {
-        autoSortIntervalSeconds = 30;
+    if (isNaN(autoSortIntervalSeconds) || autoSortIntervalSeconds < 1) {
+        autoSortIntervalSeconds = 1;
     } else if (autoSortIntervalSeconds > 3600) {
         autoSortIntervalSeconds = 3600;
     }

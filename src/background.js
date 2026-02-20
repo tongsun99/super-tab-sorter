@@ -14,6 +14,7 @@ var SUSPENDED_PREFIX_LEN = SUSPENDED_PREFIX.length;
 var autoSortDebounceTimer = null;               // Debounce timer for tab events
 const AUTO_SORT_DEBOUNCE_DELAY = 1000;          // 1 second debounce delay
 const AUTO_SORT_ALARM_NAME = "autoSortTimer";   // Name for chrome.alarms
+var autoSortIntervalTimer = null;               // setInterval timer for short intervals (< 60s)
 var isInitializing = true;                      // Initialization flag
 
 // Extension icon onClick handler...
@@ -62,23 +63,37 @@ chrome.alarms.onAlarm.addListener(function(alarm) {
 });
 
 // Listen for storage changes (settings updates from options page)
-// Restarts alarms if auto-sort settings change
+// Restarts alarms/timers if auto-sort settings change
 chrome.storage.onChanged.addListener(function(changes, areaName) {
     if (areaName === 'sync') {
         const autoSortSettingsChanged = changes.autoSortEnabled ||
                                         changes.autoSortIntervalSeconds;
         if (autoSortSettingsChanged) {
-            chrome.alarms.clear(AUTO_SORT_ALARM_NAME, function() {
-                chrome.storage.sync.get({
-                    autoSortEnabled: false,
-                    autoSortIntervalSeconds: 300
-                }, function(settings) {
-                    if (settings.autoSortEnabled && settings.autoSortIntervalSeconds > 0) {
+            // Clear existing timers/alarms
+            if (autoSortIntervalTimer !== null) {
+                clearInterval(autoSortIntervalTimer);
+                autoSortIntervalTimer = null;
+            }
+            chrome.alarms.clear(AUTO_SORT_ALARM_NAME);
+
+            // Restart with new settings
+            chrome.storage.sync.get({
+                autoSortEnabled: false,
+                autoSortIntervalSeconds: 300
+            }, function(settings) {
+                if (settings.autoSortEnabled && settings.autoSortIntervalSeconds > 0) {
+                    // For intervals < 60 seconds, use setInterval
+                    // For intervals >= 60 seconds, use chrome.alarms
+                    if (settings.autoSortIntervalSeconds < 60) {
+                        autoSortIntervalTimer = setInterval(function() {
+                            sortTabGroups();
+                        }, settings.autoSortIntervalSeconds * 1000);
+                    } else {
                         chrome.alarms.create(AUTO_SORT_ALARM_NAME, {
                             periodInMinutes: Math.ceil(settings.autoSortIntervalSeconds / 60)
                         });
                     }
-                });
+                }
             });
         }
     }
@@ -118,16 +133,30 @@ chrome.runtime.onInstalled.addListener(function (details) {
 // Also handles service worker resumption after Chrome termination
 function initializeAutoSort() {
     isInitializing = true;
+
+    // Clear any existing timers/alarms
+    if (autoSortIntervalTimer !== null) {
+        clearInterval(autoSortIntervalTimer);
+        autoSortIntervalTimer = null;
+    }
+    chrome.alarms.clear(AUTO_SORT_ALARM_NAME);
+
     chrome.storage.sync.get({
         autoSortEnabled: false,
         autoSortIntervalSeconds: 300
     }, function(settings) {
         if (settings.autoSortEnabled && settings.autoSortIntervalSeconds > 0) {
-            chrome.alarms.clear(AUTO_SORT_ALARM_NAME, function() {
+            // For intervals < 60 seconds, use setInterval
+            // For intervals >= 60 seconds, use chrome.alarms
+            if (settings.autoSortIntervalSeconds < 60) {
+                autoSortIntervalTimer = setInterval(function() {
+                    sortTabGroups();
+                }, settings.autoSortIntervalSeconds * 1000);
+            } else {
                 chrome.alarms.create(AUTO_SORT_ALARM_NAME, {
                     periodInMinutes: Math.ceil(settings.autoSortIntervalSeconds / 60)
                 });
-            });
+            }
         }
         isInitializing = false;
     });
